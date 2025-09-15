@@ -15,15 +15,25 @@ dotenv.config();
 
 const app = express();
 
-// Initialize Firebase Admin SDK
-if (fs.existsSync("./serviceAccountKey.json")) {
-  const serviceAccount = JSON.parse(fs.readFileSync("./serviceAccountKey.json", "utf8"));
+//Initialize Firebase Admin from Environment Variable ---
+try {
+  // Render's environment variables are strings, so we need to parse the JSON
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
   });
-} else {
-  console.warn("⚠️ Firebase serviceAccountKey.json not found — skipping Firebase Admin init");
+} catch (error) {
+  // If the key isn't set or is invalid, we can fall back to the local file for development
+  if (fs.existsSync("./serviceAccountKey.json")) {
+    const serviceAccount = JSON.parse(fs.readFileSync("./serviceAccountKey.json", "utf8"));
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+  } else {
+    console.warn("⚠️ Firebase Admin credentials not found in environment or local file.");
+  }
 }
+
 
 const PORT = process.env.PORT || 5000;
 const __dirname = path.resolve();
