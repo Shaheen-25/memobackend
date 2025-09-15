@@ -42,7 +42,7 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 app.use(express.json());
-// app.use("/uploads", express.static("uploads")); // --- REMOVED THIS INSECURE LINE ---
+app.use("/uploads", express.static("uploads"));
 app.use("/patterns", express.static(path.join(__dirname, '..', 'memofrontend', 'public', 'patterns')));
 app.use("/auth", authRoutes);
 app.use('/api/ai', aiRoutes);
@@ -80,55 +80,31 @@ const storage = multer.diskStorage({
     cb(null, uniqueName);
   },
 });
-const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
-    cb(null, true);
-  } else {
-    cb(new Error('Only images and videos are allowed!'), false);
-  }
-};
-const upload = multer({ storage, fileFilter, limits: { fileSize: 50 * 1024 * 1024 }});
+const upload = multer({ storage });
 
-// Templates array for the backend to reference for share pages
+// --- FIX: Templates array now only contains the path, not the url() wrapper ---
 const templates = [
     { id: 'light', name: 'Minimal Light', styles: { background: '#FFFFFF', color: '#1f2d37', headingColor: '#111827' } },
     { id: 'dark', name: 'Cozy Dark', styles: { background: '#1f2d37', color: '#d1d5db', headingColor: '#f9fafb' } },
     { id: 'leaves', name: 'Lush Leaves', styles: { backgroundImage: '/patterns/leaves.png', color: '#1f2d37', headingColor: '#111827' } },
-    { id: 'purple-sky', name: 'Purple Sky', styles: { backgroundImage: '/patterns/Purple-sky.png', color: '#FFFFFF', headingColor: '#FFFFFF' } },
-    { id: 'beach', name: 'Beach', styles: { backgroundImage: '/patterns/ocean.png', color: '#1f2d37', headingColor: '#111827' } },
+    { id: 'light', name: 'Minimal Light', styles: { background: '#FFFFFF', color: '#1f2937', borderColor: '#e5e7eb', headingColor: '#111827' } },
+    { id: 'purple-sky', name: 'Purple Sky', styles: { backgroundImage: `'/patterns/Purple-sky.png'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'beach', name: 'Beach', styles: { backgroundImage: `'/patterns/ocean.png'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'pentagon', name: 'Pentagon', styles: { backgroundImage: `'/patterns/pentagon.webp'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'strips', name: 'Stripes', styles: { backgroundImage: `'/patterns/canadian.webp'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'abstract', name: 'Abstract', styles: { backgroundImage: `'/patterns/abstract.png'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'floral', name: 'Floral', styles: { backgroundImage: `'/patterns/floral.png'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'food', name: 'Foodie', styles: { backgroundImage: `'/patterns/food.png'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'green', name: 'Greenery', styles: { backgroundImage: `'/patterns/Green.png'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'sunset', name: 'Sunset', styles: { backgroundImage: `'/patterns/sunset.png'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'joy', name: 'Joy', styles: { backgroundImage: `'/patterns/joy.png'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'cute', name: 'Cute', styles: { backgroundImage: `'/patterns/cute.png'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
+    { id: 'sky', name: 'Sky', styles: { backgroundImage: `'/patterns/weather.png'`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' } },
 ];
 
 // ====================================================================
 //                       API ROUTES
 // ====================================================================
-
-// --- NEW SECURE MEDIA ROUTE ---
-// This route replaces the public static folder. It checks for authentication
-// and ownership before allowing a user to access a media file.
-app.get('/uploads/:filename', authenticate, async (req, res) => {
-  try {
-    const filename = req.params.filename;
-
-    // Find a post that contains this media file AND belongs to the logged-in user.
-    const post = await Post.findOne({ media: filename, userId: req.userId });
-
-    // If no post is found, the user does not have permission to view this file.
-    if (!post) {
-      return res.status(403).json({ message: "Forbidden: You don't have access to this file." });
-    }
-
-    // If permission is granted, send the file.
-    const filePath = path.join(__dirname, 'uploads', filename);
-    if (fs.existsSync(filePath)) {
-      return res.sendFile(filePath);
-    } else {
-      return res.status(404).json({ message: "File not found." });
-    }
-  } catch (error) {
-    console.error("Error serving media file:", error);
-    res.status(500).json({ message: "Server error while fetching media." });
-  }
-});
 
 app.post("/upload-multiple", authenticate, upload.array("media"), async (req, res) => {
   try {
@@ -166,12 +142,8 @@ app.get("/archived-posts", authenticate, async (req, res) => {
 
 app.patch("/posts/:id/archive", authenticate, async (req, res) => {
   try {
-    const post = await Post.findOneAndUpdate(
-      { _id: req.params.id, userId: req.userId },
-      { archived: true },
-      { new: true }
-    );
-    if (!post) return res.status(404).json({ message: "Post not found or you don't have permission" });
+    const post = await Post.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { archived: true }, { new: true });
+    if (!post) return res.status(404).json({ message: "Post not found" });
     res.json(post);
   } catch (err) {
     res.status(500).json({ message: "Archive failed" });
@@ -180,12 +152,8 @@ app.patch("/posts/:id/archive", authenticate, async (req, res) => {
 
 app.patch("/posts/:id/unarchive", authenticate, async (req, res) => {
   try {
-    const post = await Post.findOneAndUpdate(
-      { _id: req.params.id, userId: req.userId },
-      { archived: false },
-      { new: true }
-    );
-    if (!post) return res.status(404).json({ message: "Post not found or you don't have permission" });
+    const post = await Post.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { archived: false }, { new: true });
+    if (!post) return res.status(404).json({ message: "Post not found" });
     res.json(post);
   } catch (err) {
     res.status(500).json({ message: "Unarchive failed" });
@@ -195,37 +163,18 @@ app.patch("/posts/:id/unarchive", authenticate, async (req, res) => {
 app.patch("/posts/:id/style", authenticate, async (req, res) => {
   try {
     const { template, fontFamily, headingColor, textColor } = req.body;
-    const post = await Post.findOneAndUpdate(
-      { _id: req.params.id, userId: req.userId },
-      { template, fontFamily, headingColor, textColor },
-      { new: true }
-    );
-    if (!post) return res.status(404).json({ message: "Post not found or you don't have permission." });
+    const post = await Post.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { template, fontFamily, headingColor, textColor }, { new: true });
+    if (!post) return res.status(404).json({ message: "Post not found" });
     res.json(post);
   } catch (err) {
     res.status(500).json({ message: "Failed to update style." });
   }
 });
 
-app.patch("/posts/:id", authenticate, async (req, res) => {
-  try {
-    const { caption, description } = req.body;
-    const post = await Post.findOneAndUpdate(
-      { _id: req.params.id, userId: req.userId },
-      { caption, description },
-      { new: true }
-    );
-    if (!post) return res.status(404).json({ message: "Post not found or you don't have permission" });
-    res.json(post);
-  } catch (err) {
-    res.status(500).json({ message: "Update failed" });
-  }
-});
-
 app.delete("/posts/:id", authenticate, async (req, res) => {
   try {
     const post = await Post.findOne({ _id: req.params.id, userId: req.userId });
-    if (!post) return res.status(404).json({ message: "Post not found or you don't have permission" });
+    if (!post) return res.status(404).json({ message: "Post not found" });
     post.media.forEach((file) => {
       const filePath = path.join(__dirname, "uploads", file);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
@@ -239,11 +188,7 @@ app.delete("/posts/:id", authenticate, async (req, res) => {
 
 app.post("/posts/:id/favorite", authenticate, async (req, res) => {
   try {
-    const post = await Post.findOneAndUpdate(
-      { _id: req.params.id },
-      { $addToSet: { favoritedBy: req.userId } },
-      { new: true }
-    );
+    const post = await Post.findOneAndUpdate({ _id: req.params.id }, { $addToSet: { favoritedBy: req.userId } }, { new: true });
     if (!post) return res.status(404).json({ message: "Post not found" });
     res.json(post);
   } catch (err) {
@@ -253,11 +198,7 @@ app.post("/posts/:id/favorite", authenticate, async (req, res) => {
 
 app.delete("/posts/:id/favorite", authenticate, async (req, res) => {
   try {
-    const post = await Post.findByIdAndUpdate(
-      req.params.id,
-      { $pull: { favoritedBy: req.userId } },
-      { new: true }
-    );
+    const post = await Post.findByIdAndUpdate(req.params.id, { $pull: { favoritedBy: req.userId } }, { new: true });
     if (!post) return res.status(404).json({ message: "Post not found" });
     res.json(post);
   } catch (err) {
@@ -286,9 +227,7 @@ app.get('/share/:postId', async (req, res) => {
       return res.status(404).send('<h1>Post not found</h1>');
     }
     
-    // NOTE: For the public share page, we serve media from a non-authenticated path.
-    // We create a separate, public route for this purpose if needed, or keep it simple.
-    // For now, this assumes anyone with the share link can see the media.
+    // The share page is public, so it does not use the secure /uploads route
     const mediaUrl = `${process.env.API_URL || 'http://localhost:5000'}/uploads/${post.media[0]}`;
     const mediaType = post.mediaTypes[0] || (post.media[0].endsWith('.mp4') ? 'video' : 'image');
     
@@ -298,6 +237,7 @@ app.get('/share/:postId', async (req, res) => {
 
     const activeTemplate = templates.find(t => t.id === post.template) || templates[0];
     
+    // --- FIX: The logic here correctly wraps the path in url() ---
     const pageStyles = {
         fontFamily: post.fontFamily || "'Montserrat', sans-serif",
         background: activeTemplate.styles.backgroundImage 
@@ -312,7 +252,49 @@ app.get('/share/:postId', async (req, res) => {
     res.send(`
       <!DOCTYPE html>
       <html lang="en">
-        </html>
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Lobster&family=Montserrat:wght@400;700&family=Playfair+Display:ital@0;1&family=Roboto+Mono&display=swap" rel="stylesheet">
+          <title>${post.caption || 'A MemoCapsule Memory'}</title>
+          <style>
+              body { 
+                  font-family: ${pageStyles.fontFamily}; 
+                  background: ${pageStyles.background}; 
+                  background-size: cover;
+                  background-position: center;
+                  color: ${pageStyles.textColor};
+                  display: flex; justify-content: center; align-items: center; 
+                  min-height: 100vh; margin: 0; padding: 1rem; box-sizing: border-box;
+              }
+              .post-container { 
+                  max-width: 500px; width: 100%; 
+                  background-color: ${activeTemplate.styles.backgroundImage ? 'rgba(255, 255, 255, 0.95)' : pageStyles.background}; 
+                  backdrop-filter: ${activeTemplate.styles.backgroundImage ? 'blur(10px)' : 'none'};
+                  -webkit-backdrop-filter: ${activeTemplate.styles.backgroundImage ? 'blur(10px)' : 'none'};
+                  border-radius: 12px; 
+                  box-shadow: 0 4px 20px rgba(0,0,0,0.15); 
+                  overflow: hidden; 
+              }
+              .content { padding: 1.5rem; }
+              h1 { font-size: 1.7em; margin: 0 0 0.5em 0; color: ${pageStyles.headingColor}; }
+              p { font-size: 1.1em; margin: 0; line-height: 1.6; }
+              .date { font-size: 0.85em; color: #888; margin-top: 1.5rem; }
+          </style>
+      </head>
+      <body>
+          <div class="post-container">
+              ${mediaElement}
+              <div class="content">
+                  <h1>${post.caption}</h1>
+                  <p>${post.description}</p>
+                  <p class="date">Created on: ${formattedDate}</p>
+              </div>
+          </div>
+      </body>
+      </html>
     `);
 
   } catch (error) {
@@ -320,6 +302,7 @@ app.get('/share/:postId', async (req, res) => {
     res.status(500).send('<h1>Error loading post</h1>');
   }
 });
+
 
 // Start Server
 app.listen(PORT, () => {
