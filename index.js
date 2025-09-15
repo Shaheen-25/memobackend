@@ -6,13 +6,10 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
-import axios from "axios";
-import puppeteer from "puppeteer";
-import ffmpeg from 'fluent-ffmpeg';
 import { format } from "date-fns";
 import authRoutes from "./routes/authRoutes.js";
+import aiRoutes from './routes/ai.js';
 import Post from "./models/Post.js";
-import { generateUniqueContent } from "./ai/generator.js";
 
 dotenv.config();
 
@@ -46,9 +43,9 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use("/uploads", express.static("uploads"));
-// Serves background pattern images from the frontend's public folder
 app.use("/patterns", express.static(path.join(__dirname, '..', 'memofrontend', 'public', 'patterns')));
 app.use("/auth", authRoutes);
+app.use('/api/ai', aiRoutes);
 
 // JWT Middleware
 const authenticate = async (req, res, next) => {
@@ -57,17 +54,10 @@ const authenticate = async (req, res, next) => {
     req.userId = "dev-user";
     return next();
   }
-
   const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).json({ message: "No token provided" });
-  }
-
+  if (!authHeader) return res.status(401).json({ message: "No token provided" });
   const token = authHeader.split(" ")[1];
-  if (!token) {
-    return res.status(401).json({ message: "Invalid token format" });
-  }
-
+  if (!token) return res.status(401).json({ message: "Invalid token format" });
   try {
     const decodedToken = await admin.auth().verifyIdToken(token);
     req.userId = decodedToken.uid;
@@ -106,107 +96,11 @@ const templates = [
     { id: 'leaves', name: 'Lush Leaves', styles: { backgroundImage: '/patterns/leaves.png', color: '#1f2d37', headingColor: '#111827' } },
     { id: 'purple-sky', name: 'Purple Sky', styles: { backgroundImage: '/patterns/Purple-sky.png', color: '#FFFFFF', headingColor: '#FFFFFF' } },
     { id: 'beach', name: 'Beach', styles: { backgroundImage: '/patterns/ocean.png', color: '#1f2d37', headingColor: '#111827' } },
-    // Add other templates as needed
 ];
 
 // ====================================================================
-//                       API ROUTES START HERE
+//                       API ROUTES
 // ====================================================================
-
-app.post("/api/render-video/:id", authenticate, async (req, res) => {
-  const { styles } = req.body;
-  const postId = req.params.id;
-
-  try {
-    const post = await Post.findOne({ _id: postId, userId: req.userId });
-    if (!post || !post.media[0] || post.mediaTypes[0] !== 'video') {
-      return res.status(404).json({ message: "Valid video post not found." });
-    }
-
-    res.status(202).json({ message: "Video rendering process started." });
-
-    console.log(`[JOB_START] Starting video render for post ${postId}`);
-    const browser = await puppeteer.launch();
-    const page = await browser.newPage();
-    
-    const htmlContent = `
-      <html>
-        <head>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Lobster&family=Montserrat:wght@400;700&family=Playfair+Display&family=Roboto+Mono&display=swap');
-            body { margin: 0; width: 500px; height: 500px; font-family: ${styles.fontFamily}; background: ${styles.background}; color: ${styles.color}; }
-            .container { padding: 20px; }
-            h3 { color: ${styles.headingColor}; }
-            p { color: ${styles.color}; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h3>${post.caption}</h3>
-            <p>${post.description}</p>
-            <p>${format(new Date(post.createdAt), "PPP")}</p>
-          </div>
-        </body>
-      </html>
-    `;
-    
-    await page.setContent(htmlContent);
-    const backgroundImagePath = `uploads/background-${postId}.png`;
-    await page.screenshot({ path: backgroundImagePath, fullPage: true });
-    await browser.close();
-    console.log(`[JOB_PROGRESS] Background image created for post ${postId}`);
-
-    const inputVideoPath = path.join(__dirname, 'uploads', post.media[0]);
-    const outputVideoPath = `uploads/rendered-${postId}.mp4`;
-
-    ffmpeg()
-      .input(backgroundImagePath)
-      .input(inputVideoPath)
-      .complexFilter([
-        '[1:v] scale=400:300 [scaled_video]',
-        '[0:v][scaled_video] overlay=50:100'
-      ])
-      .outputOptions('-map 1:a?')
-      .save(outputVideoPath)
-      .on('end', () => {
-        console.log(`[JOB_COMPLETE] Rendered video saved to ${outputVideoPath}`);
-        fs.unlinkSync(backgroundImagePath);
-      })
-      .on('error', (err) => {
-        console.error(`[JOB_ERROR] FFmpeg error for post ${postId}:`, err);
-        fs.unlinkSync(backgroundImagePath);
-      });
-
-  } catch (err) {
-    console.error("Error starting video render:", err);
-  }
-});
-
-app.get("/api/fonts", async (req, res) => {
-  try {
-    const fontFamilies = [
-      "Montserrat:wght@400;600", "Playfair+Display", "Roboto+Mono", "Lobster"
-    ].map(name => `family=${name.replace(/\s/g, '+')}`).join('&');
-    const url = `https://fonts.googleapis.com/css2?${fontFamilies}&display=swap`;
-    const fontCss = await axios.get(url);
-    res.header("Content-Type", "text/css");
-    res.send(fontCss.data);
-  } catch (error) {
-    res.status(500).send("Error fetching fonts");
-  }
-});
-
-app.get("/api/public/posts/:id", async (req, res) => {
-  try {
-    const post = await Post.findById(req.params.id);
-    if (!post || post.archived) {
-      return res.status(404).json({ message: "Post not found" });
-    }
-    res.json(post);
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
 app.post("/upload-multiple", authenticate, upload.array("media"), async (req, res) => {
   try {
@@ -216,13 +110,7 @@ app.post("/upload-multiple", authenticate, upload.array("media"), async (req, re
     const mediaPaths = req.files.map((file) => file.filename);
     const mediaTypes = req.files.map((file) => file.mimetype.startsWith('image/') ? 'image' : 'video');
     const { caption = "", description = "" } = req.body;
-    const newPost = new Post({ 
-      media: mediaPaths, 
-      mediaTypes: mediaTypes,
-      caption, 
-      description,
-      userId: req.userId 
-    });
+    const newPost = new Post({ media: mediaPaths, mediaTypes, caption, description, userId: req.userId });
     await newPost.save();
     res.status(201).json({ message: "Post uploaded", post: newPost });
   } catch (err) {
@@ -321,19 +209,6 @@ app.delete("/posts/:id", authenticate, async (req, res) => {
   }
 });
 
-app.post("/api/ai-caption", async (req, res) => {
-  try {
-    const { userPrompt, currentCaption = "", currentDescription = "" } = req.body;
-    const result = await generateUniqueContent(userPrompt, currentCaption, currentDescription);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ 
-      error: "AI generation failed", 
-      details: err.message,
-    });
-  }
-});
-
 app.post("/posts/:id/favorite", authenticate, async (req, res) => {
   try {
     const post = await Post.findOneAndUpdate(
@@ -371,9 +246,8 @@ app.get("/favorites", authenticate, async (req, res) => {
   }
 });
 
-
 // ====================================================================
-//                       UPDATED SHARE ROUTE IS HERE
+//                       SHARE PAGE ROUTE
 // ====================================================================
 app.get('/share/:postId', async (req, res) => {
   try {
@@ -413,7 +287,7 @@ app.get('/share/:postId', async (req, res) => {
           <link rel="preconnect" href="https://fonts.googleapis.com">
           <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
           <link href="https://fonts.googleapis.com/css2?family=Lobster&family=Montserrat:wght@400;700&family=Playfair+Display:ital@0;1&family=Roboto+Mono&display=swap" rel="stylesheet">
-          <title>${post.caption || 'A Memory from MemoCapsule'}</title>
+          <title>${post.caption || 'A MemoCapsule Memory'}</title>
           <style>
               body { 
                   font-family: ${pageStyles.fontFamily}; 
@@ -421,17 +295,11 @@ app.get('/share/:postId', async (req, res) => {
                   background-size: cover;
                   background-position: center;
                   color: ${pageStyles.textColor};
-                  display: flex; 
-                  justify-content: center; 
-                  align-items: center; 
-                  min-height: 100vh; 
-                  margin: 0; 
-                  padding: 1rem; 
-                  box-sizing: border-box;
+                  display: flex; justify-content: center; align-items: center; 
+                  min-height: 100vh; margin: 0; padding: 1rem; box-sizing: border-box;
               }
               .post-container { 
-                  max-width: 500px; 
-                  width: 100%; 
+                  max-width: 500px; width: 100%; 
                   background-color: ${activeTemplate.styles.backgroundImage ? 'rgba(255, 255, 255, 0.9)' : pageStyles.background}; 
                   backdrop-filter: ${activeTemplate.styles.backgroundImage ? 'blur(10px)' : 'none'};
                   -webkit-backdrop-filter: ${activeTemplate.styles.backgroundImage ? 'blur(10px)' : 'none'};
@@ -440,11 +308,7 @@ app.get('/share/:postId', async (req, res) => {
                   overflow: hidden; 
               }
               .content { padding: 1.5rem; }
-              h1 { 
-                  font-size: 1.7em; 
-                  margin: 0 0 0.5em 0; 
-                  color: ${pageStyles.headingColor};
-              }
+              h1 { font-size: 1.7em; margin: 0 0 0.5em 0; color: ${pageStyles.headingColor}; }
               p { font-size: 1.1em; margin: 0; line-height: 1.6; }
               .date { font-size: 0.85em; color: #888; margin-top: 1.5rem; }
           </style>

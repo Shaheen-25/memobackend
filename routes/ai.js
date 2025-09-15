@@ -1,21 +1,19 @@
-// memobackend/routes/ai.js
-const express = require("express");
+import express from 'express';
+import { generateUniqueContent } from '../ai/generator.js'; // Correct import
+
 const router = express.Router();
-const generateWithMixtral = require("../utils/generateCaption");
 
-router.post("/generate", async (req, res) => {
-  const { type, prompt } = req.body;
-
-  if (!prompt || !type) {
-    return res.status(400).json({ error: "Prompt and type required" });
+router.post('/caption', async (req, res) => {
+  try {
+    const { userPrompt, currentCaption, currentDescription } = req.body;
+    const result = await generateUniqueContent(userPrompt, currentCaption, currentDescription);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ 
+      error: "AI generation failed", 
+      details: err.message,
+    });
   }
-
-  const prefix = type === "caption" ? "Write an Instagram-style caption for this:" : "Write a poetic story based on this:";
-  const fullPrompt = `${prefix} "${prompt}"`;
-
-  const aiText = await generateWithMixtral(fullPrompt);
-
-  res.json({ result: aiText });
 });
 
-module.exports = router;
+export default router;
