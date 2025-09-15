@@ -1,15 +1,16 @@
 import mongoose from "mongoose";
 
+// Define the Post schema
 const postSchema = new mongoose.Schema(
   {
     userId: {
       type: String,
       required: true,
-      index: true,
+      index: true, // Index for faster queries by userId
     },
     media: {
       type: [String],
-      required: [true, "Media files are required"],
+      required: [true, "Media files are required"], // At least one media file is required
     },
     mediaTypes: {
       type: [String],
@@ -23,11 +24,11 @@ const postSchema = new mongoose.Schema(
     description: {
       type: String,
       trim: true,
-      default: "",
+      default: "",   // Default to empty string if not provided
     },
     archived: {
       type: Boolean,
-      default: false,
+      default: false,// By default, posts are not archived
     },
     favoritedBy: {
       type: [String],
@@ -35,13 +36,12 @@ const postSchema = new mongoose.Schema(
     },
     template: {
       type: String,
-      default: 'light',
+      default: 'light', // Default template
     },
     fontFamily: {
       type: String,
       default: "'Montserrat', sans-serif",
     },
-    // --- ADD THESE TWO NEW FIELDS ---
     headingColor: {
       type: String, // Will store hex color codes e.g., '#FFFFFF'
     },

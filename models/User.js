@@ -4,8 +4,8 @@ const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: true,
-      trim: true,
+      required: true, // User's name is required
+      trim: true, // Trim whitespace
     },
     email: {
       type: String,
@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema(
     },
     firebaseUid: {
       type: String,
-      required: true,
+      required: true, 
       unique: true, // The Firebase UID is the unique key for this user
     },
   },

@@ -11,10 +11,10 @@ import authRoutes from "./routes/authRoutes.js";
 import aiRoutes from './routes/ai.js';
 import Post from "./models/Post.js";
 
+// Load environment variables from .env file
 dotenv.config();
-
+// Create Express app
 const app = express();
-
 // Initialize Firebase Admin SDK
 if (fs.existsSync("./serviceAccountKey.json")) {
   const serviceAccount = JSON.parse(fs.readFileSync("./serviceAccountKey.json", "utf8"));
@@ -25,6 +25,7 @@ if (fs.existsSync("./serviceAccountKey.json")) {
   console.warn("⚠️ Firebase serviceAccountKey.json not found — skipping Firebase Admin init");
 }
 
+// Server Port
 const PORT = process.env.PORT || 5000;
 const __dirname = path.resolve();
 
@@ -102,11 +103,12 @@ const templates = [
 //                       API ROUTES
 // ====================================================================
 
+// Single file upload route
 app.post("/upload-multiple", authenticate, upload.array("media"), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: "No media files uploaded" });
-    }
+    } // Ensure at least one file is uploaded
     const mediaPaths = req.files.map((file) => file.filename);
     const mediaTypes = req.files.map((file) => file.mimetype.startsWith('image/') ? 'image' : 'video');
     const { caption = "", description = "" } = req.body;
@@ -118,6 +120,7 @@ app.post("/upload-multiple", authenticate, upload.array("media"), async (req, re
   }
 });
 
+// Get all non-archived posts for the authenticated user
 app.get("/posts", authenticate, async (req, res) => {
   try {
     const posts = await Post.find({ userId: req.userId, archived: false }).sort({ createdAt: -1 });
@@ -127,6 +130,7 @@ app.get("/posts", authenticate, async (req, res) => {
   }
 });
 
+// Get all archived posts for the authenticated user
 app.get("/archived-posts", authenticate, async (req, res) => {
   try {
     const posts = await Post.find({ userId: req.userId, archived: true }).sort({ createdAt: -1 });
@@ -136,6 +140,7 @@ app.get("/archived-posts", authenticate, async (req, res) => {
   }
 });
 
+// Get a single post by ID
 app.patch("/posts/:id/archive", authenticate, async (req, res) => {
   try {
     const post = await Post.findOneAndUpdate(
@@ -150,6 +155,7 @@ app.patch("/posts/:id/archive", authenticate, async (req, res) => {
   }
 });
 
+//  Get a single post by ID
 app.patch("/posts/:id/unarchive", authenticate, async (req, res) => {
   try {
     const post = await Post.findOneAndUpdate(
@@ -164,6 +170,7 @@ app.patch("/posts/:id/unarchive", authenticate, async (req, res) => {
   }
 });
 
+// Update post style
 app.patch("/posts/:id/style", authenticate, async (req, res) => {
   try {
     const { template, fontFamily, headingColor, textColor } = req.body;
@@ -179,6 +186,7 @@ app.patch("/posts/:id/style", authenticate, async (req, res) => {
   }
 });
 
+// Update post caption/description
 app.patch("/posts/:id", authenticate, async (req, res) => {
   try {
     const { caption, description } = req.body;
@@ -194,6 +202,7 @@ app.patch("/posts/:id", authenticate, async (req, res) => {
   }
 });
 
+// Delete a post by ID
 app.delete("/posts/:id", authenticate, async (req, res) => {
   try {
     const post = await Post.findOne({ _id: req.params.id, userId: req.userId });
@@ -209,6 +218,7 @@ app.delete("/posts/:id", authenticate, async (req, res) => {
   }
 });
 
+// Favorite a post
 app.post("/posts/:id/favorite", authenticate, async (req, res) => {
   try {
     const post = await Post.findOneAndUpdate(
@@ -223,6 +233,7 @@ app.post("/posts/:id/favorite", authenticate, async (req, res) => {
   }
 });
 
+// Unfavorite a post
 app.delete("/posts/:id/favorite", authenticate, async (req, res) => {
   try {
     const post = await Post.findByIdAndUpdate(
@@ -237,6 +248,7 @@ app.delete("/posts/:id/favorite", authenticate, async (req, res) => {
   }
 });
 
+// Get favorites for the authenticated user
 app.get("/favorites", authenticate, async (req, res) => {
   try {
     const posts = await Post.find({ favoritedBy: req.userId, archived: false }).sort({ createdAt: -1 });
@@ -258,15 +270,17 @@ app.get('/share/:postId', async (req, res) => {
       return res.status(404).send('<h1>Post not found</h1>');
     }
 
+    // Determine media URL and type
     const mediaUrl = `${process.env.API_URL || 'http://localhost:5000'}/uploads/${post.media[0]}`;
     const mediaType = post.mediaTypes[0] || (post.media[0].endsWith('.mp4') ? 'video' : 'image');
     
+    // Create media element HTML
     const mediaElement = mediaType === 'video'
       ? `<video src="${mediaUrl}" controls autoplay muted style="width:100%; display:block;"></video>`
       : `<img src="${mediaUrl}" alt="${post.caption}" style="width:100%; display:block;">`;
-
+    // Determine active template styles
     const activeTemplate = templates.find(t => t.id === post.template) || templates[0];
-    
+    // Combine template styles with any custom styles from the post
     const pageStyles = {
         fontFamily: post.fontFamily || "'Montserrat', sans-serif",
         background: activeTemplate.styles.backgroundImage 
@@ -275,9 +289,9 @@ app.get('/share/:postId', async (req, res) => {
         headingColor: post.headingColor || activeTemplate.styles.headingColor,
         textColor: post.textColor || activeTemplate.styles.color
     };
-    
+    // Format creation date
     const formattedDate = format(new Date(post.createdAt), "MMMM dd, yyyy");
-
+    // Send HTML response
     res.send(`
       <!DOCTYPE html>
       <html lang="en">

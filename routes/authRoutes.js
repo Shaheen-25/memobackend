@@ -1,9 +1,10 @@
 import express from "express";
 import User from "../models/User.js";
 
+// Create a router instance
 const router = express.Router();
 
-// ✅ Correct Firebase-Compatible Signup Route
+// Correct Firebase-Compatible Signup Route
 router.post("/signup", async (req, res) => {
   const { name, email, firebaseUid } = req.body;
 
@@ -25,14 +26,14 @@ router.post("/signup", async (req, res) => {
       email,
       firebaseUid,
     });
-
+    // Save the new user document
     await newUser.save();
-
+    // Respond with the created user document
     res.status(201).json({
       message: "User record created successfully in MongoDB",
       user: newUser,
     });
-
+    // Note: The actual authentication (verifying email/password or OAuth tokens) is handled by Firebase
   } catch (err) {
     console.error("Signup error:", err.message);
     res.status(500).json({ message: "Server error while creating user record" });

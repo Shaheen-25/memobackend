@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
 
+// Load environment variables from .env file
 dotenv.config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -8,12 +9,13 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // The 'export' keyword is here, making this the only export needed.
 export async function generateUniqueContent(userPrompt, currentCaption = "", currentDescription = "") {
   try {
+    // Initialize the Gemini model
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
+    // Craft the prompt with detailed instructions
     const prompt = `
       You are "Echo," a creative writer and storyteller for the app MemoCapsule.
       Your task is to generate three (3) distinct and high-quality options for a user's memory. Each option must include a short, impactful caption and a longer, more descriptive story.
-
+      
       **Persona & Tone:**
       - Write from a first-person perspective, as if you are the one experiencing the memory ("I will always remember...", "This moment felt like...").
       - Your tone should be deeply personal, vivid, and emotionally resonant. Use sensory details and storytelling techniques to bring the memory to life.
@@ -36,16 +38,16 @@ export async function generateUniqueContent(userPrompt, currentCaption = "", cur
         { "caption": "Third unique caption.", "description": "Third unique description that is four lines long." }
       ]
     `;
-
+    // Call the model to generate content
     const result = await model.generateContent(prompt, {
       temperature: 0.9,
     });
-    
+    // Extract and parse the response
     const response = await result.response;
     const text = response.text();
-
+    // Log the raw AI response for debugging
     console.log("Raw AI Response:", text);
-
+    // Extract the JSON array from the response text
     if (text.includes('[') && text.includes(']')) {
       const jsonString = text.substring(text.indexOf('['), text.lastIndexOf(']') + 1);
       const generatedOptions = JSON.parse(jsonString);
@@ -53,7 +55,7 @@ export async function generateUniqueContent(userPrompt, currentCaption = "", cur
     } else {
       throw new Error("AI did not return a valid JSON array.");
     }
-
+    // Fallback in case of unexpected format
   } catch (error) {
     console.error("AI Generation Error:", error);
     return [
@@ -64,5 +66,3 @@ export async function generateUniqueContent(userPrompt, currentCaption = "", cur
     ];
   }
 }
-
-// NOTE: The other "export" lines at the end of the file have been removed.
