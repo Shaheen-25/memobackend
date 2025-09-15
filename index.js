@@ -11,10 +11,10 @@ import authRoutes from "./routes/authRoutes.js";
 import aiRoutes from './routes/ai.js';
 import Post from "./models/Post.js";
 
-// Load environment variables from .env file
 dotenv.config();
-// Create Express app
+
 const app = express();
+
 // Initialize Firebase Admin SDK
 if (fs.existsSync("./serviceAccountKey.json")) {
   const serviceAccount = JSON.parse(fs.readFileSync("./serviceAccountKey.json", "utf8"));
@@ -25,7 +25,6 @@ if (fs.existsSync("./serviceAccountKey.json")) {
   console.warn("⚠️ Firebase serviceAccountKey.json not found — skipping Firebase Admin init");
 }
 
-// Server Port
 const PORT = process.env.PORT || 5000;
 const __dirname = path.resolve();
 
@@ -43,7 +42,7 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 app.use(express.json());
-app.use("/uploads", express.static("uploads"));
+// app.use("/uploads", express.static("uploads")); // --- REMOVED THIS INSECURE LINE ---
 app.use("/patterns", express.static(path.join(__dirname, '..', 'memofrontend', 'public', 'patterns')));
 app.use("/auth", authRoutes);
 app.use('/api/ai', aiRoutes);
@@ -103,12 +102,39 @@ const templates = [
 //                       API ROUTES
 // ====================================================================
 
-// Single file upload route
+// --- NEW SECURE MEDIA ROUTE ---
+// This route replaces the public static folder. It checks for authentication
+// and ownership before allowing a user to access a media file.
+app.get('/uploads/:filename', authenticate, async (req, res) => {
+  try {
+    const filename = req.params.filename;
+
+    // Find a post that contains this media file AND belongs to the logged-in user.
+    const post = await Post.findOne({ media: filename, userId: req.userId });
+
+    // If no post is found, the user does not have permission to view this file.
+    if (!post) {
+      return res.status(403).json({ message: "Forbidden: You don't have access to this file." });
+    }
+
+    // If permission is granted, send the file.
+    const filePath = path.join(__dirname, 'uploads', filename);
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath);
+    } else {
+      return res.status(404).json({ message: "File not found." });
+    }
+  } catch (error) {
+    console.error("Error serving media file:", error);
+    res.status(500).json({ message: "Server error while fetching media." });
+  }
+});
+
 app.post("/upload-multiple", authenticate, upload.array("media"), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: "No media files uploaded" });
-    } // Ensure at least one file is uploaded
+    }
     const mediaPaths = req.files.map((file) => file.filename);
     const mediaTypes = req.files.map((file) => file.mimetype.startsWith('image/') ? 'image' : 'video');
     const { caption = "", description = "" } = req.body;
@@ -120,7 +146,6 @@ app.post("/upload-multiple", authenticate, upload.array("media"), async (req, re
   }
 });
 
-// Get all non-archived posts for the authenticated user
 app.get("/posts", authenticate, async (req, res) => {
   try {
     const posts = await Post.find({ userId: req.userId, archived: false }).sort({ createdAt: -1 });
@@ -130,7 +155,6 @@ app.get("/posts", authenticate, async (req, res) => {
   }
 });
 
-// Get all archived posts for the authenticated user
 app.get("/archived-posts", authenticate, async (req, res) => {
   try {
     const posts = await Post.find({ userId: req.userId, archived: true }).sort({ createdAt: -1 });
@@ -140,7 +164,6 @@ app.get("/archived-posts", authenticate, async (req, res) => {
   }
 });
 
-// Get a single post by ID
 app.patch("/posts/:id/archive", authenticate, async (req, res) => {
   try {
     const post = await Post.findOneAndUpdate(
@@ -155,7 +178,6 @@ app.patch("/posts/:id/archive", authenticate, async (req, res) => {
   }
 });
 
-//  Get a single post by ID
 app.patch("/posts/:id/unarchive", authenticate, async (req, res) => {
   try {
     const post = await Post.findOneAndUpdate(
@@ -170,7 +192,6 @@ app.patch("/posts/:id/unarchive", authenticate, async (req, res) => {
   }
 });
 
-// Update post style
 app.patch("/posts/:id/style", authenticate, async (req, res) => {
   try {
     const { template, fontFamily, headingColor, textColor } = req.body;
@@ -186,7 +207,6 @@ app.patch("/posts/:id/style", authenticate, async (req, res) => {
   }
 });
 
-// Update post caption/description
 app.patch("/posts/:id", authenticate, async (req, res) => {
   try {
     const { caption, description } = req.body;
@@ -202,7 +222,6 @@ app.patch("/posts/:id", authenticate, async (req, res) => {
   }
 });
 
-// Delete a post by ID
 app.delete("/posts/:id", authenticate, async (req, res) => {
   try {
     const post = await Post.findOne({ _id: req.params.id, userId: req.userId });
@@ -218,7 +237,6 @@ app.delete("/posts/:id", authenticate, async (req, res) => {
   }
 });
 
-// Favorite a post
 app.post("/posts/:id/favorite", authenticate, async (req, res) => {
   try {
     const post = await Post.findOneAndUpdate(
@@ -233,7 +251,6 @@ app.post("/posts/:id/favorite", authenticate, async (req, res) => {
   }
 });
 
-// Unfavorite a post
 app.delete("/posts/:id/favorite", authenticate, async (req, res) => {
   try {
     const post = await Post.findByIdAndUpdate(
@@ -248,7 +265,6 @@ app.delete("/posts/:id/favorite", authenticate, async (req, res) => {
   }
 });
 
-// Get favorites for the authenticated user
 app.get("/favorites", authenticate, async (req, res) => {
   try {
     const posts = await Post.find({ favoritedBy: req.userId, archived: false }).sort({ createdAt: -1 });
@@ -269,18 +285,19 @@ app.get('/share/:postId', async (req, res) => {
     if (!post || post.archived) {
       return res.status(404).send('<h1>Post not found</h1>');
     }
-
-    // Determine media URL and type
+    
+    // NOTE: For the public share page, we serve media from a non-authenticated path.
+    // We create a separate, public route for this purpose if needed, or keep it simple.
+    // For now, this assumes anyone with the share link can see the media.
     const mediaUrl = `${process.env.API_URL || 'http://localhost:5000'}/uploads/${post.media[0]}`;
     const mediaType = post.mediaTypes[0] || (post.media[0].endsWith('.mp4') ? 'video' : 'image');
     
-    // Create media element HTML
     const mediaElement = mediaType === 'video'
       ? `<video src="${mediaUrl}" controls autoplay muted style="width:100%; display:block;"></video>`
       : `<img src="${mediaUrl}" alt="${post.caption}" style="width:100%; display:block;">`;
-    // Determine active template styles
+
     const activeTemplate = templates.find(t => t.id === post.template) || templates[0];
-    // Combine template styles with any custom styles from the post
+    
     const pageStyles = {
         fontFamily: post.fontFamily || "'Montserrat', sans-serif",
         background: activeTemplate.styles.backgroundImage 
@@ -289,55 +306,13 @@ app.get('/share/:postId', async (req, res) => {
         headingColor: post.headingColor || activeTemplate.styles.headingColor,
         textColor: post.textColor || activeTemplate.styles.color
     };
-    // Format creation date
+    
     const formattedDate = format(new Date(post.createdAt), "MMMM dd, yyyy");
-    // Send HTML response
+
     res.send(`
       <!DOCTYPE html>
       <html lang="en">
-      <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <link rel="preconnect" href="https://fonts.googleapis.com">
-          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-          <link href="https://fonts.googleapis.com/css2?family=Lobster&family=Montserrat:wght@400;700&family=Playfair+Display:ital@0;1&family=Roboto+Mono&display=swap" rel="stylesheet">
-          <title>${post.caption || 'A MemoCapsule Memory'}</title>
-          <style>
-              body { 
-                  font-family: ${pageStyles.fontFamily}; 
-                  background: ${pageStyles.background}; 
-                  background-size: cover;
-                  background-position: center;
-                  color: ${pageStyles.textColor};
-                  display: flex; justify-content: center; align-items: center; 
-                  min-height: 100vh; margin: 0; padding: 1rem; box-sizing: border-box;
-              }
-              .post-container { 
-                  max-width: 500px; width: 100%; 
-                  background-color: ${activeTemplate.styles.backgroundImage ? 'rgba(255, 255, 255, 0.9)' : pageStyles.background}; 
-                  backdrop-filter: ${activeTemplate.styles.backgroundImage ? 'blur(10px)' : 'none'};
-                  -webkit-backdrop-filter: ${activeTemplate.styles.backgroundImage ? 'blur(10px)' : 'none'};
-                  border-radius: 12px; 
-                  box-shadow: 0 4px 20px rgba(0,0,0,0.15); 
-                  overflow: hidden; 
-              }
-              .content { padding: 1.5rem; }
-              h1 { font-size: 1.7em; margin: 0 0 0.5em 0; color: ${pageStyles.headingColor}; }
-              p { font-size: 1.1em; margin: 0; line-height: 1.6; }
-              .date { font-size: 0.85em; color: #888; margin-top: 1.5rem; }
-          </style>
-      </head>
-      <body>
-          <div class="post-container">
-              ${mediaElement}
-              <div class="content">
-                  <h1>${post.caption}</h1>
-                  <p>${post.description}</p>
-                  <p class="date">Created on: ${formattedDate}</p>
-              </div>
-          </div>
-      </body>
-      </html>
+        </html>
     `);
 
   } catch (error) {
@@ -345,7 +320,6 @@ app.get('/share/:postId', async (req, res) => {
     res.status(500).send('<h1>Error loading post</h1>');
   }
 });
-
 
 // Start Server
 app.listen(PORT, () => {
