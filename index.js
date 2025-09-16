@@ -305,6 +305,9 @@ app.get('/share/:postId', async (req, res) => {
 
     // Determine active template and styles
     const activeTemplate = templates.find(t => t.id === post.template) || templates[0];
+    const backgroundImageUrl = activeTemplate.styles.backgroundImage
+        ? `${process.env.BACKEND_URL}${activeTemplate.styles.backgroundImage.replace(/'/g, '')}`
+        : null;
     const pageStyles = {
         fontFamily: post.fontFamily || "'Montserrat', sans-serif",
         background: activeTemplate.styles.backgroundImage 
