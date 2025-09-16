@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import authRoutes from "./routes/authRoutes.js";
 import aiRoutes from './routes/ai.js';
 import Post from "./models/Post.js";
+import AWS from 'aws-sdk';
 
 dotenv.config();
 
@@ -17,23 +18,22 @@ const app = express();
 
 //Initialize Firebase Admin from Environment Variable ---
 try {
-  // Render's environment variables are strings, so we need to parse the JSON
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
   });
+  console.log("✅ Firebase Admin initialized from environment variable.");
 } catch (error) {
-  // If the key isn't set or is invalid, we can fall back to the local file for development
   if (fs.existsSync("./serviceAccountKey.json")) {
     const serviceAccount = JSON.parse(fs.readFileSync("./serviceAccountKey.json", "utf8"));
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
+    console.log("✅ Firebase Admin initialized from local file.");
   } else {
-    console.warn("⚠️ Firebase Admin credentials not found in environment or local file.");
+    console.warn("⚠️ Firebase Admin credentials not found.");
   }
 }
-
 
 const PORT = process.env.PORT || 5000;
 const __dirname = path.resolve();
@@ -44,32 +44,31 @@ mongoose
   .then(() => console.log("✅ MongoDB connected successfully"))
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
+  // AWS S3 Configuration
+const s3 = new AWS.S3({
+  endpoint: process.env.B2_ENDPOINT,
+  accessKeyId: process.env.B2_KEY_ID,
+  secretAccessKey: process.env.B2_APPLICATION_KEY,
+  signatureVersion: 'v4',
+});  
+
 // Middleware
-// --- FIX: Updated CORS configuration for production ---
 const allowedOrigins = [
-  'http://localhost:5173', // Your local frontend
-  'https://memocapsule.vercel.app' // Your live frontend URL
+  'http://localhost:5173', // local frontend
+  'https://memocapsule.vercel.app' //live frontend URL
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    // allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
     }
-    return callback(null, true);
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-  allowedHeaders: ["Content-Type", "Authorization"]
 }));
-
 app.use(express.json());
-// ... (the rest of your middleware)
-app.use(express.json());
-app.use("/uploads", express.static("uploads"));
 app.use("/patterns", express.static(path.join(__dirname, '..', 'memofrontend', 'public', 'patterns')));
 app.use("/auth", authRoutes);
 app.use('/api/ai', aiRoutes);
@@ -96,20 +95,10 @@ const authenticate = async (req, res, next) => {
 };
 
 // Multer Config
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = "uploads";
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir);
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}-${file.originalname}`;
-    cb(null, uniqueName);
-  },
-});
+const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// --- FIX: Templates array now only contains the path, not the url() wrapper ---
+// Predefined Templates
 const templates = [
     { id: 'light', name: 'Minimal Light', styles: { background: '#FFFFFF', color: '#1f2d37', headingColor: '#111827' } },
     { id: 'dark', name: 'Cozy Dark', styles: { background: '#1f2d37', color: '#d1d5db', headingColor: '#f9fafb' } },
@@ -134,20 +123,55 @@ const templates = [
 // ====================================================================
 
 app.post("/upload-multiple", authenticate, upload.array("media"), async (req, res) => {
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ message: "No media files uploaded" });
+  }
   try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ message: "No media files uploaded" });
-    }
-    const mediaPaths = req.files.map((file) => file.filename);
+    const uploadFile = (file) => {
+      const uniqueName = `${Date.now()}-${file.originalname}`;
+      const params = {
+        Bucket: process.env.B2_BUCKET_NAME,
+        Key: uniqueName,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+      };
+      return s3.upload(params).promise().then(data => data.Key);
+    };
+    const mediaPaths = await Promise.all(req.files.map(uploadFile));
+    
     const mediaTypes = req.files.map((file) => file.mimetype.startsWith('image/') ? 'image' : 'video');
     const { caption = "", description = "" } = req.body;
     const newPost = new Post({ media: mediaPaths, mediaTypes, caption, description, userId: req.userId });
     await newPost.save();
     res.status(201).json({ message: "Post uploaded", post: newPost });
   } catch (err) {
+    console.error("Upload to B2 failed:", err);
     res.status(500).json({ message: "Upload failed", error: err.message });
   }
 });
+
+app.get('/media-url/:filename', authenticate, async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const post = await Post.findOne({ media: filename, userId: req.userId });
+
+    if (!post) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const params = {
+      Bucket: process.env.B2_BUCKET_NAME,
+      Key: filename,
+      Expires: 60 * 5 // URL is valid for 5 minutes
+    };
+    
+    const url = s3.getSignedUrl('getObject', params);
+    res.json({ url });
+  } catch (error) {
+    res.status(500).json({ message: "Could not generate media URL." });
+  }
+});
+
 
 app.get("/posts", authenticate, async (req, res) => {
   try {
@@ -202,13 +226,21 @@ app.delete("/posts/:id", authenticate, async (req, res) => {
   try {
     const post = await Post.findOne({ _id: req.params.id, userId: req.userId });
     if (!post) return res.status(404).json({ message: "Post not found" });
-    post.media.forEach((file) => {
-      const filePath = path.join(__dirname, "uploads", file);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    });
+
+    // Delete files from B2
+    const deleteFile = (filename) => {
+        const params = {
+            Bucket: process.env.B2_BUCKET_NAME,
+            Key: filename,
+        };
+        return s3.deleteObject(params).promise();
+    };
+    await Promise.all(post.media.map(deleteFile));
+    
     await post.deleteOne();
     res.json({ message: "Deleted" });
   } catch (err) {
+    console.error("Delete failed:", err);
     res.status(500).json({ message: "Delete failed" });
   }
 });
@@ -254,17 +286,22 @@ app.get('/share/:postId', async (req, res) => {
       return res.status(404).send('<h1>Post not found</h1>');
     }
     
-    // The share page is public, so it does not use the secure /uploads route
-    const mediaUrl = `${process.env.API_URL || 'http://localhost:5000'}/uploads/${post.media[0]}`;
+    // Generate signed URL for the first media item
+    const mediaUrlParams = {
+        Bucket: process.env.B2_BUCKET_NAME,
+        Key: post.media[0],
+        Expires: 60 * 60 // Share link media is valid for 1 hour
+    };
+    const mediaUrl = s3.getSignedUrl('getObject', mediaUrlParams);
+    
     const mediaType = post.mediaTypes[0] || (post.media[0].endsWith('.mp4') ? 'video' : 'image');
     
     const mediaElement = mediaType === 'video'
       ? `<video src="${mediaUrl}" controls autoplay muted style="width:100%; display:block;"></video>`
       : `<img src="${mediaUrl}" alt="${post.caption}" style="width:100%; display:block;">`;
 
+    // Determine active template and styles
     const activeTemplate = templates.find(t => t.id === post.template) || templates[0];
-    
-    // --- FIX: The logic here correctly wraps the path in url() ---
     const pageStyles = {
         fontFamily: post.fontFamily || "'Montserrat', sans-serif",
         background: activeTemplate.styles.backgroundImage 
@@ -273,9 +310,7 @@ app.get('/share/:postId', async (req, res) => {
         headingColor: post.headingColor || activeTemplate.styles.headingColor,
         textColor: post.textColor || activeTemplate.styles.color
     };
-    
     const formattedDate = format(new Date(post.createdAt), "MMMM dd, yyyy");
-
     res.send(`
       <!DOCTYPE html>
       <html lang="en">
