@@ -310,8 +310,8 @@ app.get('/share/:postId', async (req, res) => {
         : null;
     const pageStyles = {
         fontFamily: post.fontFamily || "'Montserrat', sans-serif",
-        background: activeTemplate.styles.backgroundImage 
-            ? `url(${activeTemplate.styles.backgroundImage})` 
+        background: backgroundImageUrl
+            ? `url(${backgroundImageUrl})`
             : activeTemplate.styles.background,
         headingColor: post.headingColor || activeTemplate.styles.headingColor,
         textColor: post.textColor || activeTemplate.styles.color
