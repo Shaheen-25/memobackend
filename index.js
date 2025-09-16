@@ -54,15 +54,18 @@ const s3 = new AWS.S3({
 
 // Middleware
 const allowedOrigins = [
-  'http://localhost:5173', // local frontend
+  'http://localhost:5173',   // this in case your dev server switches back
+  'https://localhost:5173',  // Add the new HTTPS origin
+  'http://localhost:3000', 
   'https://memocapsule.vercel.app' //live frontend URL
 ];
-
 app.use(cors({
   origin: function (origin, callback) {
+    console.log('➡️ Request received from origin:', origin);
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
+      console.log('➡️ Request received from origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
