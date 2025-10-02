@@ -10,7 +10,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 export async function generateUniqueContent(userPrompt, currentCaption = "", currentDescription = "") {
   try {
     // Initialize the Gemini model
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
     // Craft the prompt with detailed instructions
     const prompt = `
       You are "Echo," a creative writer and storyteller for the app MemoCapsule.

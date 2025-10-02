@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import authRoutes from "./routes/authRoutes.js";
 import aiRoutes from './routes/ai.js';
 import Post from "./models/Post.js";
+import { s3 } from './config/s3Client.js';
 
 dotenv.config();
 
