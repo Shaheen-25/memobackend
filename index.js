@@ -10,7 +10,6 @@ import { format } from "date-fns";
 import authRoutes from "./routes/authRoutes.js";
 import aiRoutes from './routes/ai.js';
 import Post from "./models/Post.js";
-import AWS from 'aws-sdk';
 
 dotenv.config();
 
@@ -43,14 +42,6 @@ mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => console.log("✅ MongoDB connected successfully"))
   .catch((err) => console.error("❌ MongoDB connection error:", err));
-
-  // AWS S3 Configuration
-const s3 = new AWS.S3({
-  endpoint: process.env.B2_ENDPOINT,
-  accessKeyId: process.env.B2_KEY_ID,
-  secretAccessKey: process.env.B2_APPLICATION_KEY,
-  signatureVersion: 'v4',
-});  
 
 // Middleware
 const allowedOrigins = [
@@ -310,8 +301,8 @@ app.get('/share/:postId', async (req, res) => {
         : null;
     const pageStyles = {
         fontFamily: post.fontFamily || "'Montserrat', sans-serif",
-        background: backgroundImageUrl
-            ? `url(${backgroundImageUrl})`
+        background: activeTemplate.styles.backgroundImage 
+            ? `url(${activeTemplate.styles.backgroundImage})` 
             : activeTemplate.styles.background,
         headingColor: post.headingColor || activeTemplate.styles.headingColor,
         textColor: post.textColor || activeTemplate.styles.color
