@@ -1,11 +1,9 @@
 import express from "express";
 import User from "../models/User.js";
-// --- ADDED IMPORTS ---
 import Post from "../models/Post.js";
-import { authenticate } from "../middleware/authenticate.js"; // Adjust path if needed
+import { authenticate } from "../middleware/authenticate.js";
 import { s3 } from "../config/s3Client.js";
 
-// Create a router instance
 const router = express.Router();
 
 // Signup Route
@@ -17,11 +15,19 @@ router.post("/signup", async (req, res) => {
   }
 
   try {
+    // --- FIX: Added check for existing email to prevent crashes ---
+    const emailExists = await User.findOne({ email: email });
+    if (emailExists) {
+      return res.status(409).json({ message: "An account with this email already exists." });
+    }
+
+    // Check if user already exists via Firebase UID (for logins)
     const existingUser = await User.findOne({ firebaseUid });
     if (existingUser) {
       return res.status(200).json(existingUser);
     }
 
+    // If user is truly new, create them
     const newUser = new User({
       name,
       email,
@@ -39,24 +45,16 @@ router.post("/signup", async (req, res) => {
 });
 
 
-// --- NEW DELETE ACCOUNT ROUTE ---
-/**
- * @route   DELETE /auth/me
- * @desc    Deletes the authenticated user's account and all their data
- * @access  Private
- */
+// Delete Account Route
 router.delete('/me', authenticate, async (req, res) => {
   try {
-    const userId = req.userId; // From authenticate middleware
+    const userId = req.userId;
 
-    // 1. Find all of the user's posts to get the media file keys
     const userPosts = await Post.find({ userId: userId });
 
     if (userPosts.length > 0) {
-      // 2. Create a list of all media file keys to delete from Backblaze
       const filesToDelete = userPosts.flatMap(post => post.media.map(fileKey => ({ Key: fileKey })));
       
-      // 3. If there are files, delete them from Backblaze B2
       if (filesToDelete.length > 0) {
         const deleteParams = {
           Bucket: process.env.B2_BUCKET_NAME,
@@ -66,13 +64,9 @@ router.delete('/me', authenticate, async (req, res) => {
       }
     }
 
-    // 4. Delete all of the user's post documents from MongoDB
     await Post.deleteMany({ userId: userId });
-
-    // 5. Delete the user's main profile document from the 'users' collection
     await User.findOneAndDelete({ firebaseUid: userId });
 
-    // Note: The Firebase user account itself is deleted from the frontend after this succeeds.
     res.status(200).json({ message: 'User data deleted successfully.' });
 
   } catch (error) {
