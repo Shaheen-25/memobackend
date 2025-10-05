@@ -4,14 +4,24 @@ import dotenv from "dotenv";
 // Load environment variables from .env file
 dotenv.config();
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Ensure the API key is loaded before initializing
+if (!process.env.GOOGLE_API_KEY) {
+  throw new Error("GOOGLE_API_KEY is not defined in the .env file.");
+}
 
-// The 'export' keyword is here, making this the only export needed.
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+
+// Define the model configuration once
+const model = genAI.getGenerativeModel({
+  // Using the correct model name from your successful API call
+  model: "gemini-pro-latest",
+  generationConfig: {
+    temperature: 0.9,
+  },
+});
+
 export async function generateUniqueContent(userPrompt, currentCaption = "", currentDescription = "") {
   try {
-    // Initialize the Gemini model
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-    // Craft the prompt with detailed instructions
     const prompt = `
       You are "Echo," a creative writer and storyteller for the app MemoCapsule.
       Your task is to generate three (3) distinct and high-quality options for a user's memory. Each option must include a short, impactful caption and a longer, more descriptive story.
@@ -38,31 +48,40 @@ export async function generateUniqueContent(userPrompt, currentCaption = "", cur
         { "caption": "Third unique caption.", "description": "Third unique description that is four lines long." }
       ]
     `;
-    // Call the model to generate content
-    const result = await model.generateContent(prompt, {
-      temperature: 0.9,
-    });
-    // Extract and parse the response
+
+    // Call the model with just the prompt
+    const result = await model.generateContent(prompt);
     const response = await result.response;
     const text = response.text();
-    // Log the raw AI response for debugging
-    console.log("Raw AI Response:", text);
-    // Extract the JSON array from the response text
-    if (text.includes('[') && text.includes(']')) {
-      const jsonString = text.substring(text.indexOf('['), text.lastIndexOf(']') + 1);
-      const generatedOptions = JSON.parse(jsonString);
-      return generatedOptions;
-    } else {
-      throw new Error("AI did not return a valid JSON array.");
+    
+    console.log("Raw AI Response:", text); // Keep for debugging
+
+    // Improved and more robust JSON parsing
+    let jsonString = text;
+    
+    // Check for and remove markdown fences if they exist
+    const markdownMatch = jsonString.match(/```json\s*([\s\S]*?)\s*```/);
+    if (markdownMatch) {
+        jsonString = markdownMatch[1];
     }
-    // Fallback in case of unexpected format
+
+    // Attempt to parse the cleaned string
+    const generatedOptions = JSON.parse(jsonString.trim());
+    
+    if (!Array.isArray(generatedOptions)) {
+        throw new Error("Parsed content is not a JSON array.");
+    }
+
+    return generatedOptions;
+
   } catch (error) {
     console.error("AI Generation Error:", error);
+    // Return a structured fallback response
     return [
       {
         caption: "A moment to remember.",
         description: "This memory holds a special place in my heart, a reminder of a time filled with joy and meaning. Every detail tells a story that I will carry with me always. It's moments like these that truly define our journey.",
-      }
+      },
     ];
   }
 }

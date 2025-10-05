@@ -13,6 +13,7 @@ import Post from "./models/Post.js";
 import { s3 } from './config/s3Client.js';
 
 dotenv.config();
+console.log("Loaded Google API Key:", process.env.GOOGLE_API_KEY);
 
 const app = express();
 
