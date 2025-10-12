@@ -218,6 +218,27 @@ app.patch("/posts/:id/style", authenticate, async (req, res) => {
   }
 });
 
+app.patch("/posts/:id/details", authenticate, async (req, res) => {
+  try {
+    const { caption, description } = req.body;
+    
+    const post = await Post.findOneAndUpdate(
+      { _id: req.params.id, userId: req.userId },
+      { caption, description },
+      { new: true } // This option returns the updated document
+    );
+
+    if (!post) {
+      return res.status(404).json({ message: "Post not found or you don't have permission to edit it." });
+    }
+    
+    res.json(post);
+  } catch (err) {
+    console.error("Error updating post details:", err);
+    res.status(500).json({ message: "Failed to update post details." });
+  }
+});
+
 app.delete("/posts/:id", authenticate, async (req, res) => {
   try {
     const post = await Post.findOne({ _id: req.params.id, userId: req.userId });
