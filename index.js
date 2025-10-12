@@ -66,7 +66,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use("/patterns", express.static(path.join(__dirname, '..', 'memofrontend', 'public', 'patterns')));
-app.use("/auth", authRoutes);
+app.use("/api/auth", authRoutes);
 app.use('/api/ai', aiRoutes);
 
 // JWT Middleware
@@ -362,6 +362,11 @@ app.get('/share/:postId', async (req, res) => {
     console.error('Error fetching share post:', error);
     res.status(500).send('<h1>Error loading post</h1>');
   }
+});
+
+app.use((req, res, next) => {
+    console.log(`❓ Unmatched request: ${req.method} ${req.originalUrl}`);
+    res.status(404).send("Route not found");
 });
 
 

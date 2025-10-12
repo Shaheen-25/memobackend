@@ -6,8 +6,16 @@ import { s3 } from "../config/s3Client.js";
 
 const router = express.Router();
 
-// Signup Route
-router.post("/signup", async (req, res) => {
+// --- ADD THIS DEBUGGING MIDDLEWARE ---
+// This will log a message every time a request is routed to this file.
+router.use((req, res, next) => {
+  console.log(`✅ Request reached authRoutes: ${req.method} ${req.path}`);
+  next();
+});
+// ------------------------------------
+
+// This endpoint creates a user record in MongoDB after a successful Firebase signup.
+router.post("/create-user", async (req, res) => {
   const { name, email, firebaseUid } = req.body;
 
   if (!name || !email || !firebaseUid) {
@@ -15,16 +23,17 @@ router.post("/signup", async (req, res) => {
   }
 
   try {
-    // --- FIX: Added check for existing email to prevent crashes ---
+    // Check if user already exists via Firebase UID (handles re-logins)
+    const existingUser = await User.findOne({ firebaseUid });
+    if (existingUser) {
+      console.log('User already exists, returning data for:', firebaseUid);
+      return res.status(200).json(existingUser);
+    }
+
+    // Check for existing email to prevent duplicates from different auth methods
     const emailExists = await User.findOne({ email: email });
     if (emailExists) {
       return res.status(409).json({ message: "An account with this email already exists." });
-    }
-
-    // Check if user already exists via Firebase UID (for logins)
-    const existingUser = await User.findOne({ firebaseUid });
-    if (existingUser) {
-      return res.status(200).json(existingUser);
     }
 
     // If user is truly new, create them
@@ -33,13 +42,16 @@ router.post("/signup", async (req, res) => {
       email,
       firebaseUid,
     });
+
     await newUser.save();
+    console.log('Successfully created user in MongoDB:', newUser); // Added log for success
     res.status(201).json({
       message: "User record created successfully in MongoDB",
       user: newUser,
     });
+
   } catch (err) {
-    console.error("Signup error:", err.message);
+    console.error("Error in /create-user route:", err.message);
     res.status(500).json({ message: "Server error while creating user record" });
   }
 });
