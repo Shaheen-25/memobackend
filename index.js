@@ -18,6 +18,10 @@ console.log("Loaded Google API Key:", process.env.GOOGLE_API_KEY);
 
 const app = express();
 
+
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 //Initialize Firebase Admin from Environment Variable 
 try {
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -37,8 +41,9 @@ try {
   }
 }
 
+
 const PORT = process.env.PORT || 5000;
-const __dirname = path.resolve();
+// const __dirname = path.resolve();
 
 // MongoDB Connection
 mongoose
@@ -49,7 +54,7 @@ mongoose
 // Middleware
 const allowedOrigins = [
   'http://localhost:5173',   
-  'https://localhost:5173',  
+  'https://localhost:5173',
   'http://localhost:3000', 
   'https://memocapsule.vercel.app' //live frontend URL
 ];
@@ -65,8 +70,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
-app.use("/patterns", express.static(path.join(__dirname, '..', 'memofrontend', 'public', 'patterns')));
-
+app.use(express.static(path.join(__dirname, 'public')));
 app.use("/api/auth", authRoutes);
 app.use('/api/ai', aiRoutes);
 
