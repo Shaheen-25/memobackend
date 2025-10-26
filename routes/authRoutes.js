@@ -6,13 +6,10 @@ import { s3 } from "../config/s3Client.js";
 
 const router = express.Router();
 
-// --- ADD THIS DEBUGGING MIDDLEWARE ---
-// This will log a message every time a request is routed to this file.
 router.use((req, res, next) => {
   console.log(`✅ Request reached authRoutes: ${req.method} ${req.path}`);
   next();
 });
-// ------------------------------------
 
 // This endpoint creates a user record in MongoDB after a successful Firebase signup.
 router.post("/create-user", async (req, res) => {
@@ -55,7 +52,6 @@ router.post("/create-user", async (req, res) => {
     res.status(500).json({ message: "Server error while creating user record" });
   }
 });
-
 
 // Delete Account Route
 router.delete('/me', authenticate, async (req, res) => {

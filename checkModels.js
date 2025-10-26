@@ -14,7 +14,6 @@ async function listModels() {
   try {
     const response = await fetch(url);
     if (!response.ok) {
-      // If the response is not successful, print the error details
       const errorBody = await response.json();
       console.error("Error fetching models:", response.status, response.statusText);
       console.error("Details:", JSON.stringify(errorBody, null, 2));
@@ -26,7 +25,6 @@ async function listModels() {
     console.log("✅ Available Models for your API Key:");
     for (const model of data.models) {
       if (model.supportedGenerationMethods.includes("generateContent")) {
-        // We only need the short name, not the full "models/gemini-pro"
         const modelName = model.name.replace('models/', '');
         console.log("- ", modelName);
       }

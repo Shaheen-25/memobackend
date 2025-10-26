@@ -17,11 +17,11 @@ const userSchema = new mongoose.Schema(
     firebaseUid: {
       type: String,
       required: true, 
-      unique: true, // The Firebase UID is the unique key for this user
+      unique: true, 
     },
   },
   {
-    timestamps: true, // Automatically adds createdAt and updatedAt
+    timestamps: true, 
   }
 );
 

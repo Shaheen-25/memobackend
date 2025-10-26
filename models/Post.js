@@ -1,6 +1,5 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 
-// Define the Post schema
 const postSchema = new mongoose.Schema(
   {
     userId: {
@@ -8,14 +7,23 @@ const postSchema = new mongoose.Schema(
       required: true,
       index: true, // Index for faster queries by userId
     },
-    media: {
-      type: [String],
-      required: [true, "Media files are required"], // At least one media file is required
-    },
-    mediaTypes: {
-      type: [String],
-      default: []
-    },
+    media: [{
+      originalKey: { // Filename/key in S3/B2 for the original file
+        type: String,
+        required: true
+      },
+      thumbnailKey: { // Filename/key for the generated thumbnail version 
+        type: String
+      },
+      mediumKey: { // Filename/key for the generated medium-size version
+        type: String
+      },
+      mediaType: { // Type of the media item
+        type: String,
+        required: true,
+        enum: ['image', 'video'] // Ensures only 'image' or 'video' can be stored
+      }
+    }],
     caption: {
       type: String,
       trim: true,
@@ -24,14 +32,14 @@ const postSchema = new mongoose.Schema(
     description: {
       type: String,
       trim: true,
-      default: "",   // Default to empty string if not provided
+      default: "", // Default to empty string if not provided
     },
-    archived: {
+    isArchived: {
       type: Boolean,
-      default: false,// By default, posts are not archived
+      default: false, // By default, posts are not archived
     },
     favoritedBy: {
-      type: [String],
+      type: [String], // Array of user UIDs who favorited the post
       default: [],
     },
     template: {
@@ -43,15 +51,20 @@ const postSchema = new mongoose.Schema(
       default: "'Montserrat', sans-serif",
     },
     headingColor: {
-      type: String, // Will store hex color codes e.g., '#FFFFFF'
+      type: String, // Will store color names or hex codes e.g., 'Red' or '#FFFFFF'
     },
     textColor: {
-      type: String, // Will store hex color codes e.g., '#1f2937'
+      type: String, // Will store color names or hex codes e.g., 'Black' or '#1f2937'
     },
   },
   {
     timestamps: true, // adds createdAt and updatedAt
   }
 );
+
+postSchema.path('media').validate(function(value) {
+  return value && value.length > 0;
+}, 'At least one media file is required.');
+
 
 export default mongoose.model("Post", postSchema);

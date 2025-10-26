@@ -1,9 +1,8 @@
 import express from 'express';
-import { generateUniqueContent } from '../ai/generator.js'; // Correct import
+import { generateUniqueContent } from '../ai/generator.js'; 
 
 const router = express.Router();
 
-// POST /api/ai/caption
 router.post('/caption', async (req, res) => {
   try {
     const { userPrompt, currentCaption, currentDescription } = req.body;

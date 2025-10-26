@@ -25,6 +25,7 @@
     "mongoose": "^8.16.4",
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
-    "puppeteer": "^24.19.0"
+    "puppeteer": "^24.19.0",
+    "sharp": "^0.34.4"
   }
 }
